@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <style>
+    #canvas {
+      border: black solid 1px;
+      margin-left: 20px;
+    }
+  </style>
+  <script>
+    function getMousePos(canvas, evt) {
+      var rect = canvas.getBoundingClientRect();
+      return {
+        x: evt.clientX - rect.left,
+        y: evt.clientY - rect.top
+      };
+    }
+
+  class MQTT {
+      constructor(channel) {
+        this.channel = channel;
+        this.client = null
+      }
+
+      connect() {
+        this.client = mqtt.connect('wss://test.mosquitto.org:8081');
+
+        this.client.on('connect', () => {
+          console.log('kya bakaiti hai')
+          this.client.subscribe(this.channel, (err) => {
+            if (err) {
+              console.log('Something failed', err);
+            } else {
+              this.client.publish(this.channel, 'Hello!')
+              console.log('connected')
+            }
+
+          })
+        })
+      }
+
+      publishEvent(event, mousePos) {
+        this.client.publish(this.channel, [event, mousePos.x, mousePos.y].join(' '));
+      }
+
+      onEvent(cb) {
+        console.log('yahan se');
+        this.client.on('message', cb)
+      }
+    }
+
+    class DrawingBoard {
+      constructor(boardName, ctx) {
+        this.boardName = boardName;
+        this.active = false;
+        this.tool = 'pencil';
+        this.ctx = ctx;
+      }
+
+      onMouseMove(mousePos) {
+        if (this.tool === 'pencil' && this.active === true) {
+          this.ctx.lineTo(mousePos.x, mousePos.y); this.ctx.stroke()
+          this.ctx.strokeStyle = 'blue';
+        }
+      }
+
+      onMouseDown(mousePos) {
+        this.active = true;
+        if (this.tool==='pencil' && this.active === true) {
+          console.log('mousedown')
+          this.ctx.beginPath();
+          this.ctx.strokeStyle = 'blue';
+          this.ctx.moveTo(mousePos.x, mousePos.y);
+        }
+      }
+
+      onMouseUp(mousePos) {
+        this.active = false;
+        if (this.tool === 'pencil' && this.active === false) {
+          console.log('mouseup')
+          this.ctx.stroke();
+        }
+      }
+    }
+
+    window.onload = () => {
+      const connectTo = prompt('Connect to ?', 'pikapika');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+
+      const board = new DrawingBoard(connectTo, ctx);
+      const messaging = new MQTT(connectTo);
+      messaging.connect();
+      messaging.onEvent((topic, msg) => {
+        console.log(topic, 'Subscription ', msg.toString())
+
+        const [event, x, y] = msg.toString().split(' ');
+        const mousePos = { x, y};
+
+        if (event === 'onMouseMove') {
+          board.onMouseMove(mousePos);
+        } else if ( event === 'onMouseDown') {
+          board.onMouseDown(mousePos);
+        } else if ( event === 'onMouseUp') {
+          board.onMouseUp(mousePos);
+        }
+      })
+
+      canvas.onmousemove = function(evt) {
+        var mousePos = getMousePos(canvas, evt);
+
+        board.onMouseMove(mousePos);
+        messaging.publishEvent('onMouseMove', mousePos);
+      };
+
+      canvas.onmousedown =  (e) => {
+        var mousePos = getMousePos(canvas, e);
+
+        board.onMouseDown(mousePos);
+        messaging.publishEvent('onMouseDown', mousePos);
+      };
+
+      canvas.onmouseup = (e) => {
+        var mousePos = getMousePos(canvas, e);
+
+        board.onMouseUp(mousePos);
+        messaging.publishEvent('onMouseUp', mousePos);
+      }
+    }
+
+  </script>
+</head>
+<body>
+  <h1>Drawing game</h1>
+
+  <canvas id="canvas" height= "500px" width="700px"></canvas>
+  <script src="https://unpkg.com/mqtt@4.2.8/dist/mqtt.min.js"></script>
+</body>
+</html>
